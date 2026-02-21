@@ -41,6 +41,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Build Docker image
+        run: |
+          docker build -t ${{ env.IMAGE_NAME }}:latest -f docker/Dockerfile .
+        # Image must exist locally; docker-e2e runs on a new runner and cannot use the image from build-and-test.
+
       - name: Generate RSA certificates
         run: |
           chmod +x scripts/*.sh
@@ -48,10 +53,10 @@ jobs:
 
       - name: Start services with Docker Compose
         run: |
-          docker compose -f docker/docker-compose.yml up -d
+          docker compose -f docker/docker-compose.yml --project-directory . up -d
           # Wait for ServiceA to listen on 50051
           for i in $(seq 1 30); do
-            if docker compose -f docker/docker-compose.yml exec -T service_a sh -c 'openssl s_client -connect localhost:50051 -brief -cert /PQC/certs/client.pem -key /PQC/certs/client.key -CAfile /PQC/certs/ca.pem </dev/null 2>/dev/null'; then
+            if docker compose -f docker/docker-compose.yml --project-directory . exec -T service_a sh -c 'openssl s_client -connect localhost:50051 -brief -cert /PQC/certs/client.pem -key /PQC/certs/client.key -CAfile /PQC/certs/ca.pem </dev/null 2>/dev/null'; then
               break
             fi
             sleep 1
@@ -76,4 +81,4 @@ jobs:
 
       - name: Stop services
         if: always()
-        run: docker compose -f docker/docker-compose.yml down
+        run: docker compose -f docker/docker-compose.yml --project-directory . down
