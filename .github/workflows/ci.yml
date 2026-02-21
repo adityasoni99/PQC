@@ -1,0 +1,79 @@
+# CI for Quantum-Safe gRPC PQC Microservices
+# Builds with Docker (OpenSSL 3.5.5 + gRPC/Protobuf/Abseil), runs unit/integration tests and TLS validation.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  COMPOSE_FILE: docker/docker-compose.yml
+  IMAGE_NAME: pqc-grpc
+
+jobs:
+  build-and-test:
+    name: Build and test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build Docker image
+        run: |
+          docker build -t ${{ env.IMAGE_NAME }}:latest -f docker/Dockerfile .
+
+      - name: Run unit and integration tests
+        run: |
+          docker run --rm ${{ env.IMAGE_NAME }}:latest ctest --test-dir build --output-on-failure
+
+      - name: Run TLS groups check
+        run: |
+          docker run --rm ${{ env.IMAGE_NAME }}:latest bash scripts/tls_groups_check.sh
+
+  docker-e2e:
+    name: Docker E2E
+    runs-on: ubuntu-latest
+    needs: build-and-test
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Generate RSA certificates
+        run: |
+          chmod +x scripts/*.sh
+          bash scripts/generate_rsa_certs.sh
+
+      - name: Start services with Docker Compose
+        run: |
+          docker compose -f docker/docker-compose.yml up -d
+          # Wait for ServiceA to listen on 50051
+          for i in $(seq 1 30); do
+            if docker compose -f docker/docker-compose.yml exec -T service_a sh -c 'openssl s_client -connect localhost:50051 -brief -cert /PQC/certs/client.pem -key /PQC/certs/client.key -CAfile /PQC/certs/ca.pem </dev/null 2>/dev/null'; then
+              break
+            fi
+            sleep 1
+          done
+
+      - name: Validate hybrid TLS (ServiceA)
+        run: |
+          docker run --rm --network host \
+            -v "$PWD/certs:/PQC/certs:ro" \
+            -v "$PWD/scripts:/PQC/scripts:ro" \
+            -e PQC_VALIDATE_SKIP_START=1 \
+            -e PQC_VALIDATE_SERVER_ADDR=localhost:50051 \
+            -e PQC_CERT_PATH=/PQC/certs/server.pem \
+            -e PQC_KEY_PATH=/PQC/certs/server.key \
+            -e PQC_CA_PATH=/PQC/certs/ca.pem \
+            -e PQC_CLIENT_CERT_PATH=/PQC/certs/client.pem \
+            -e PQC_CLIENT_KEY_PATH=/PQC/certs/client.key \
+            -e CERTS_DIR=/PQC/certs \
+            -w /PQC \
+            ${{ env.IMAGE_NAME }}:latest \
+            bash -c 'export PATH=/opt/openssl-3.5.5/bin:$PATH LD_LIBRARY_PATH=/opt/openssl-3.5.5/lib:$LD_LIBRARY_PATH; bash scripts/validate_tls.sh'
+
+      - name: Stop services
+        if: always()
+        run: docker compose -f docker/docker-compose.yml down
