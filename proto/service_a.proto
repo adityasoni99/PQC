@@ -1,0 +1,15 @@
+syntax = "proto3";
+package pqc.servicea;
+
+message DataRequest {
+  string payload = 1;
+}
+
+message DataResponse {
+  string result = 1;
+  string negotiated_group = 2;
+}
+
+service ServiceA {
+  rpc ProcessData(DataRequest) returns (DataResponse);
+}

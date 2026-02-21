@@ -1,0 +1,16 @@
+syntax = "proto3";
+package pqc.serviceb;
+
+message ForwardReq {
+  string payload = 1;
+}
+
+message ForwardResp {
+  string result = 1;
+  string service_a_group = 2;
+  string service_b_group = 3;
+}
+
+service ServiceB {
+  rpc ForwardRequest(ForwardReq) returns (ForwardResp);
+}

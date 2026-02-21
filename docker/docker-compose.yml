@@ -1,0 +1,58 @@
+# Docker Compose for Quantum-Safe gRPC PQC Microservices
+# Build: docker-compose build   (from repo root: docker-compose -f docker/docker-compose.yml build)
+# Run:   docker-compose up      (ensure certs/ exists: bash scripts/generate_rsa_certs.sh)
+# Services use TLS certs from ./certs mounted at /PQC/certs; ServiceB forwards to ServiceA over the bridge network.
+# For bind-mounted certs: run `chmod 644 certs/*.key certs/ca.key` after generate_rsa_certs.sh so the container can read keys.
+
+services:
+  service_a:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    image: pqc-grpc:latest
+    command: ["/PQC/build/service_a/service_a", "--port", "50051"]
+    volumes:
+      - ./certs:/PQC/certs:ro
+    environment:
+      - LD_LIBRARY_PATH=/usr/local/lib
+      - PATH=/usr/local/bin:/usr/bin:/bin
+      - PQC_CERT_PATH=/PQC/certs/server.pem
+      - PQC_KEY_PATH=/PQC/certs/server.key
+      - PQC_CA_PATH=/PQC/certs/ca.pem
+    ports:
+      - "50051:50051"
+    networks:
+      - pqcnet
+    healthcheck:
+      # Uses OpenSSL 3.5.5 in image (built with RPATH so /usr/local/bin/openssl loads correct libs)
+      test: ["CMD", "/usr/local/bin/openssl", "s_client", "-connect", "localhost:50051", "-brief", "-cert", "/PQC/certs/client.pem", "-key", "/PQC/certs/client.key", "-CAfile", "/PQC/certs/ca.pem"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+
+  service_b:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    image: pqc-grpc:latest
+    command: ["/PQC/build/service_b/service_b", "--port", "50052", "--service-a-addr", "service_a:50051"]
+    depends_on:
+      service_a:
+        condition: service_healthy
+    volumes:
+      - ./certs:/PQC/certs:ro
+    environment:
+      - LD_LIBRARY_PATH=/usr/local/lib
+      - PATH=/usr/local/bin:/usr/bin:/bin
+      - PQC_CERT_PATH=/PQC/certs/server.pem
+      - PQC_KEY_PATH=/PQC/certs/server.key
+      - PQC_CA_PATH=/PQC/certs/ca.pem
+    ports:
+      - "50052:50052"
+    networks:
+      - pqcnet
+
+networks:
+  pqcnet:
+    driver: bridge
