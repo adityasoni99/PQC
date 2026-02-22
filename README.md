@@ -1,6 +1,6 @@
 # Quantum-Safe gRPC PQC Microservices
 
-C++ gRPC microservices with **hybrid post-quantum (PQC) key exchange** over TLS 1.3. Two services communicate over TLS; the shared TLS library supports hybrid PQC groups (e.g. X25519MLKEM768) when built with OpenSSL 3.5.5+ and offers classical fallback for compatibility.
+C++ gRPC microservices with **hybrid post-quantum (PQC) key exchange** over TLS 1.3. Two services communicate over TLS; the shared TLS library supports hybrid PQC groups (e.g. X25519MLKEM768) when built with OpenSSL 3.5.5+ and is designed to support classical fallback once the gRPC C++ API allows configuring TLS groups (today group selection follows OpenSSL defaults).
 
 ## Overview
 
@@ -107,6 +107,7 @@ Output goes to `certs/mldsa/`. The script checks that OpenSSL ≥ 3.5 is availab
 - **Is the TLS exchange PQC-safe today?** ServiceA and ServiceB use **OpenSSL’s default TLS 1.3 groups** (we cannot set them; gRPC C++ does not expose `SSL_CTX`). In **OpenSSL 3.5**, that default is **hardcoded in the library** (`ssl/t1_lib.c`, macro `TLS_DEFAULT_GROUP_LIST`) and **prefers hybrid PQC first**: `X25519MLKEM768`, then `X25519`, then `secp256r1`, etc. So with OpenSSL 3.5.5 on both sides, connections **may already negotiate X25519MLKEM768**. The default is **not** read from `openssl.cnf`; it is in code. See [docs/PQC_FAQ.md](docs/PQC_FAQ.md) and **Proving PQC handshake** below.
 - **Proving PQC handshake:** To confirm that OpenSSL 3.5.5 can negotiate hybrid PQC with this project’s certs, run the validation script against **OpenSSL’s s_server** (which allows `-groups`):  
   `PQC_VALIDATE_USE_OPENSSL_SERVER=1 bash scripts/validate_tls.sh`
+- **Proving classical fallback:** Because gRPC C++ does not expose `SSL_CTX`, we cannot set groups in the services; the same way we prove hybrid PQC with s_server/s_client, we can **prove classical-only and fallback** with **`scripts/validate_tls_fallback.sh`**. It runs s_server and s_client with classical-only groups (`x25519:secp256r1`) and with server offering PQC+classical and client classical-only (fallback interop). On success it **prints the negotiated group** (e.g. `x25519` or `secp256r1`). Requires OpenSSL ≥ 3.5; use the same `PREFIX` as for build if needed: `PREFIX=/usr/local bash scripts/validate_tls_fallback.sh`.
 - **When the API allows it:** A future implementation would use `pqc_enabled=true` to set the hybrid list and `pqc_enabled=false` for classical-only (e.g. `x25519:secp256r1`).
 
 ## Testing
@@ -144,6 +145,10 @@ Use the same `LD_LIBRARY_PATH`, `PKG_CONFIG_PATH`, and `PATH` as for the build (
   bash scripts/validate_tls.sh
   ```
   With a custom OpenSSL prefix: `PREFIX=$HOME/.local bash scripts/validate_tls.sh`. To test against OpenSSL’s s_server instead of ServiceA (e.g. when gRPC doesn't set groups): `PQC_VALIDATE_USE_OPENSSL_SERVER=1 bash scripts/validate_tls.sh`
+
+- **Validate classical fallback (s_server/s_client):** With OpenSSL ≥ 3.5 (same env as build), run  
+  `bash scripts/validate_tls_fallback.sh`  
+  to prove classical-only negotiation and fallback interop (server offers PQC+classical, client classical-only). The script prints the **negotiated group** (e.g. `x25519` or `secp256r1`) for each test. Uses port 50553 by default; set `PQC_VALIDATE_FALLBACK_PORT` if needed.
 
 ### Docker testing
 

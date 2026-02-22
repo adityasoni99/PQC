@@ -1,7 +1,10 @@
-// Integration test: classical fallback when client uses PQC-disabled credentials.
-// Server offers PQC; client uses CreateChannelCredentials(config, false).
-// Asserts RPC succeeds and negotiated group is classical (x25519/secp256r1) or
-// "unknown" if server does not report it.
+// Integration test: API and connectivity when client uses PQC-disabled credentials.
+// Server: CreateServerCredentials(config, true); client: CreateChannelCredentials(config, false).
+// Note: pqc_enabled is currently unused in tls_config.cpp (gRPC C++ does not expose SSL_CTX),
+// so both sides use OpenSSL defaults; we do not actually set different group lists.
+// This test still validates that the "PQC-disabled" client path builds, connects, and completes
+// the RPC; negotiated_group is "unknown" (ServiceA cannot read SSL* from ServerContext).
+// Asserts: RPC succeeds, result correct, and reported group is classical or "unknown".
 
 #include <gtest/gtest.h>
 #include <grpcpp/grpcpp.h>

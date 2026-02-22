@@ -81,6 +81,22 @@ jobs:
         # Use s_server with PQC groups so s_client can confirm negotiated group (X25519MLKEM768).
         # Connecting to gRPC ServiceA does not show the group in s_client output (gRPC C++ does not expose SSL_CTX).
 
+      - name: Validate classical fallback (s_server/s_client)
+        run: |
+          docker run --rm \
+            -v "$PWD/certs:/PQC/certs:ro" \
+            -v "$PWD/scripts:/PQC/scripts:ro" \
+            -e PQC_CERT_PATH=/PQC/certs/server.pem \
+            -e PQC_KEY_PATH=/PQC/certs/server.key \
+            -e PQC_CA_PATH=/PQC/certs/ca.pem \
+            -e PQC_CLIENT_CERT_PATH=/PQC/certs/client.pem \
+            -e PQC_CLIENT_KEY_PATH=/PQC/certs/client.key \
+            -e CERTS_DIR=/PQC/certs \
+            -w /PQC \
+            ${{ env.IMAGE_NAME }}:latest \
+            bash -c 'export PATH=/opt/openssl-3.5.5/bin:$PATH LD_LIBRARY_PATH=/opt/openssl-3.5.5/lib:$LD_LIBRARY_PATH; bash scripts/validate_tls_fallback.sh'
+        # Prove classical-only and fallback interop with s_server/s_client (same approach as hybrid PQC proof).
+
       - name: Stop services
         if: always()
         run: docker compose -f docker/docker-compose.yml --project-directory . down

@@ -38,7 +38,7 @@
 | `test_cert_loading` | LoadFileContents (valid/invalid file), CertConfig::FromEnv | 4 passed |
 | `test_metrics` | GetNegotiatedGroupName(null SSL) → `"unknown"` | 1 passed |
 | `test_tls_handshake` | Integration: RSA certs, server+client PQC-enabled, ProcessData; assert negotiated_group | Passed |
-| `test_fallback` | Integration: server PQC, client classical-only; assert RPC succeeds and classical group | Passed |
+| `test_fallback` | Integration: server/client use PQC-enabled vs PQC-disabled API; assert RPC succeeds and reported group is classical or unknown (pqc_enabled is unused; server does not report real group) | Passed |
 | `test_legacy_rsa_client` | E2E: legacy client (RSA + classical creds) vs server (RSA + PQC offered); assert RPC succeeds | Passed |
 
 **How to run:** With dependencies and env set (see tasks file):

@@ -28,13 +28,15 @@ This document states what we **know from this repo’s design and experiments** 
 - **Hybrid, not replace**  
   “PQC” here means **hybrid** key exchange: groups like `X25519MLKEM768` combine classical (X25519) with PQC (ML-KEM-768). Enabling PQC = adding these hybrid (and possibly PQC-only) groups to the list, not removing classical algorithms.
 
-- **Fallback (validated)**  
-  The API has a `pqc_enabled` flag. When `false`, we use classical-only groups (e.g. `x25519:secp256r1`). **`test_fallback` (Task 7.5)** confirms this: server has PQC enabled, client uses `CreateChannelCredentials(config, false)`. The test asserts the RPC succeeds and the negotiated group is classical (or “unknown” when the server does not report it). So we have **run** a test that confirms classical negotiation when the client disables PQC.
+- **Fallback (API and connectivity only)**  
+  The API has a `pqc_enabled` flag (reserved for when gRPC C++ exposes `SSL_CTX`). Today that flag is **unused** in `tls_config.cpp`, so both server and client use OpenSSL's default group list; we do **not** actually set classical-only vs PQC group lists. **`test_fallback`** still has value: it runs with server `CreateServerCredentials(config, true)` and client `CreateChannelCredentials(config, false)`. The test asserts the RPC succeeds and the reported group is classical or “unknown”. So we validate **API usage and TLS connectivity** with the PQC-disabled client path; we do **not** yet validate true classical-only negotiation, because `pqc_enabled` has no effect and the server never reports the real group (gRPC ServerContext does not expose it).
 
 - **Certs**  
   RSA remains in use for **certificates** (signatures). We do not replace RSA with PQC for certs in the current phase; ML-DSA certs are a future phase.
 
-**Conclusion:** Enabling PQC in this project does **not** disable RSA; we add hybrid key-exchange options and leave classical + RSA certs available, and **test_fallback** validates classical-only client connectivity.
+**Proving fallback with OpenSSL:** We cannot set groups in gRPC services (no `SSL_CTX`), but we can **prove** classical-only and fallback the same way we prove hybrid PQC — with **`scripts/validate_tls_fallback.sh`**. It uses `openssl s_server` and `openssl s_client` with classical-only groups and with server PQC+classical / client classical-only, verifies the negotiated group is classical, and **prints the negotiated group** (e.g. `x25519` or `secp256r1`) on success. Run with OpenSSL ≥ 3.5 (same `PREFIX` as build if needed).
+
+**Conclusion:** Enabling PQC in this project does **not** disable RSA; we add hybrid key-exchange options and leave classical + RSA certs available. **test_fallback** validates that a client created with `pqc_enabled=false` can connect and complete an RPC (API/connectivity); **validate_tls_fallback.sh** proves classical-only and fallback negotiation using s_server/s_client.
 
 ---
 
@@ -116,7 +118,7 @@ This document states what we **know from this repo’s design and experiments** 
 | Question | Answered by this project? | Summary |
 |----------|----------------------------|---------|
 | 1. Quantum-safe TLS with RSA certs (e.g. old agents)? | **Yes (design + e2e test)** | Hybrid KEM + RSA certs; **`test_legacy_rsa_client`** runs legacy client (RSA + classical) vs PQC-offering server and asserts RPC success. |
-| 2. Does PQC disable RSA? | **Yes (and tested)** | No. **`test_fallback`** confirms classical-only client connects when `pqc_enabled=false`. |
+| 2. Does PQC disable RSA? | **Yes (and tested)** | No. **`test_fallback`** validates that a client with `pqc_enabled=false` connects and RPC succeeds (API/connectivity); actual classical-only negotiation is not yet testable because the flag is unused. |
 | 3. FIPS and PQC providers together? | **No** | No FIPS or provider experiments in this repo. See OpenSSL/vendor and your own tests. |
 | 4. RSA in PQC providers / hybrid details? | **Partially** | RSA certs work; hybrid = MLKEM + classical (validated with s_server). No tests with OpenSSL PQC provider or ML-DSA certs. |
 | 5. Is TLS through ServiceA/ServiceB PQC-safe? | **Yes (answered)** | **Depends on OpenSSL.** We cannot set groups (gRPC C++ no SSL_CTX); connections use **OpenSSL’s default**. In **OpenSSL 3.5** that default is in `ssl/t1_lib.c` (`TLS_DEFAULT_GROUP_LIST`) and **prefers X25519MLKEM768** → connections **may be PQC**. Not in `openssl.cnf`. Use `PQC_VALIDATE_USE_OPENSSL_SERVER=1` to prove PQC with s_server. |

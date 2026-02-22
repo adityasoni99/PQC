@@ -31,6 +31,13 @@ This project builds with CMake. **Subagents:** read **`tasks/tasks-quantum-safe-
   ```
   - Custom OpenSSL prefix (e.g. if default `openssl` is under 3.5): `PREFIX=$HOME/.local bash scripts/validate_tls.sh`
   - Prove hybrid PQC with a server that explicitly sets groups (no ServiceA needed): `PQC_VALIDATE_USE_OPENSSL_SERVER=1 bash scripts/validate_tls.sh` (use `PQC_VALIDATE_PORT=50551` if port 50051 is in use).
+  - Validate classical fallback (s_server/s_client; same env as build so OpenSSL 3.5.5 is used):
+  ```bash
+  export LD_LIBRARY_PATH="/usr/local/lib:/usr/local/lib64:${LD_LIBRARY_PATH:-}"
+  export PATH="/usr/local/bin:${PATH}"
+  bash scripts/validate_tls_fallback.sh
+  ```
+  - Custom OpenSSL prefix: `PREFIX=$HOME/.local bash scripts/validate_tls_fallback.sh`
 
 ### Proof of hybrid PQC (quantum-safe TLS)
 
@@ -53,3 +60,29 @@ validate_tls: hybrid PQC group negotiated (TLS 1.3 group): X25519MLKEM768
 ```
 
 The script uses `openssl s_server -groups X25519MLKEM768:x25519` and `openssl s_client -groups X25519MLKEM768:x25519`; the printed group name confirms the negotiated TLS 1.3 group (e.g. **X25519MLKEM768** = X25519 + ML-KEM-768, hybrid PQC).
+
+### Proof of classical fallback
+
+Because gRPC C++ does not expose `SSL_CTX`, we cannot set TLS groups in the services. To **prove classical-only and fallback** with the same s_server/s_client approach, use **the same env as build** (so `openssl` and libs are OpenSSL 3.5.5 from `/usr/local`, not the system default):
+
+```bash
+export LD_LIBRARY_PATH="/usr/local/lib:/usr/local/lib64:${LD_LIBRARY_PATH:-}"
+export PATH="/usr/local/bin:${PATH}"
+bash scripts/validate_tls_fallback.sh
+```
+
+This runs two checks: (1) both sides classical-only (`x25519:secp256r1`) → negotiated group is classical; (2) server offers `X25519MLKEM768:x25519:secp256r1`, client offers only `x25519:secp256r1` → handshake succeeds with classical group (fallback interop). On success the script **prints the negotiated group** (e.g. `x25519` or `secp256r1`) for each test.
+
+**Example success output:**
+
+```
+validate_tls_fallback: Test 1 — classical-only (s_server and s_client with x25519:secp256r1)
+...
+validate_tls_fallback: Test 1 passed — classical group negotiated (classical-only mode): x25519
+validate_tls_fallback: Test 2 — fallback interop (server X25519MLKEM768:x25519:secp256r1, client x25519:secp256r1)
+...
+validate_tls_fallback: Test 2 passed — classical group negotiated (server offered PQC+classical, client classical only): x25519
+validate_tls_fallback: all fallback checks passed (classical-only and fallback interop)
+```
+
+If OpenSSL 3.5.5 is in a custom prefix (e.g. `$HOME/.local`), use that prefix in `PATH` and `LD_LIBRARY_PATH` instead of `/usr/local`, same as for build and `validate_tls.sh`.

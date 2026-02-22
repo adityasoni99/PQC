@@ -216,7 +216,7 @@ Create README.md covering:
 2. **Unit tests:** `ctest --test-dir build --output-on-failure` — all 4 test suites pass.
 3. **Hybrid handshake proof:** `scripts/validate_tls.sh` output contains `X25519MLKEM768` in the negotiated group.
 4. **PQC availability:** `scripts/tls_groups_check.sh` exits 0.
-5. **Fallback:** `test_fallback` test confirms classical negotiation when hybrid is disabled client-side.
+5. **Fallback:** `test_fallback` validates API and connectivity when client uses `pqc_enabled=false`; actual classical-only negotiation is not testable because gRPC C++ does not expose `SSL_CTX` (flag is unused).
 6. **Docker e2e:** `docker-compose up` shows ServiceB successfully calling ServiceA over hybrid TLS.
 7. **CI green:** GitHub Actions pipeline passes on push.
 
